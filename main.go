@@ -64,6 +64,8 @@ func main() {
 	apiKey := flag.String("apikey", os.Getenv("GHW_API_KEY"), "API key (or set env GHW_API_KEY)")
 	cmd := flag.String("cmd", "files", "Command: files|buckets|stats")
 	keywords := flag.String("keywords", "", "Search keywords")
+	ext := flag.String("ext", "", "comma separated extensions filter, e.g. pdf,docx")
+	noext := flag.String("noext", "", "comma separated extensions to exclude")
 	bucket := flag.String("bucket", "", "Bucket id or url")
 	limit := flag.Int("limit", 1000, "Page size (1-1000). All pages will be fetched until results exhausted")
 	start := flag.Int("start", 0, "Start offset (files/buckets)")
@@ -80,7 +82,7 @@ func main() {
 
 	switch strings.ToLower(*cmd) {
 	case "files":
-		handleFiles(client, *apiKey, *keywords, *bucket, *limit, *start, *output)
+		handleFiles(client, *apiKey, *keywords, *bucket, *ext, *noext, *limit, *start, *output)
 	case "buckets":
 		handleBuckets(client, *apiKey, *keywords, *cloudType, *limit, *start, *output, *onlyBucket)
 	case "stats":
@@ -116,7 +118,7 @@ func doGet(client *http.Client, apiKey, urlStr string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-func handleFiles(client *http.Client, apiKey, keywords, bucket string, limit, start int, output string) {
+func handleFiles(client *http.Client, apiKey, keywords, bucket, ext, noext string, limit, start int, output string) {
 	pageSize := limit
 	if pageSize <= 0 || pageSize > 1000 {
 		pageSize = 1000
@@ -140,10 +142,12 @@ func handleFiles(client *http.Client, apiKey, keywords, bucket string, limit, st
 	total := -1
 	for {
 		urlStr := buildURL("/files", map[string]string{
-			"keywords": keywords,
-			"bucket":   bucket,
-			"limit":    fmt.Sprintf("%d", pageSize),
-			"start":    fmt.Sprintf("%d", offset),
+			"keywords":       keywords,
+			"bucket":         bucket,
+			"extensions":     ext,
+			"stopextensions": noext,
+			"limit":          fmt.Sprintf("%d", pageSize),
+			"start":          fmt.Sprintf("%d", offset),
 		})
 		data, err := doGet(client, apiKey, urlStr)
 		if err != nil {
@@ -240,13 +244,25 @@ func handleBuckets(client *http.Client, apiKey, keywords, cloudType string, limi
 			log.Fatalf("decode: %v", err)
 		}
 
+		// client-side filter if cloudType specified
+		filtered := resp.Buckets
+		if cloudType != "" {
+			var tmp []Bucket
+			for _, b := range resp.Buckets {
+				if strings.EqualFold(b.Type, cloudType) {
+					tmp = append(tmp, b)
+				}
+			}
+			filtered = tmp
+		}
+
 		if w != nil {
 			if onlyBucket {
-				for _, b := range resp.Buckets {
+				for _, b := range filtered {
 					w.Write([]string{b.Bucket})
 				}
 			} else {
-				for _, b := range resp.Buckets {
+				for _, b := range filtered {
 					w.Write([]string{
 						fmt.Sprint(b.ID),
 						b.Bucket,
@@ -257,10 +273,10 @@ func handleBuckets(client *http.Client, apiKey, keywords, cloudType string, limi
 			}
 			w.Flush()
 		} else {
-			allBuckets = append(allBuckets, resp.Buckets...)
+			allBuckets = append(allBuckets, filtered...)
 		}
 
-		atomic.AddInt64(&fetched, int64(len(resp.Buckets)))
+		atomic.AddInt64(&fetched, int64(len(filtered)))
 		if total == -1 {
 			total = resp.Meta.Results
 		}
