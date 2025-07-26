@@ -1,7 +1,9 @@
 # bucketsearch
 
-基于 buckets.grayhatwarfare.com 官方api文档写的一个 搜索工具
+## 基于 buckets.grayhatwarfare.com 官方api文档写的一个 搜索工具
 
+
+```text
 Usage of ./main:
   -apikey string
     	API key (or set env GHW_API_KEY)
@@ -25,6 +27,7 @@ Usage of ./main:
     	Start offset (files/buckets)
   -type string
     	Bucket cloud type filter: aws|azure|dos|gcp|ali
+```
 
 
-自己编译
+## 自己编译
